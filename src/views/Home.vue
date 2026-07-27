@@ -3,8 +3,8 @@
     <div class="sticky-panel">
       <header class="page-header">
         <div>
-          <p class="hero-tag">Warehouse</p>
-          <h1>库房</h1>
+          <p class="hero-tag">ALLERGEN SEARCH</p>
+          <h1>寻找过敏源</h1>
         </div>
         <div class="header-actions">
           <button v-if="showScrollTop" class="header-icon" type="button" @click="scrollToTop">
@@ -16,81 +16,81 @@
         </div>
       </header>
 
-      <section class="search-section" aria-label="搜索和新增">
+      <section class="search-section" aria-label="搜索和录入">
         <label class="search-box">
           <el-icon><Search /></el-icon>
-          <input v-model.trim="keyword" type="search" placeholder="搜索库房物品" />
+          <input v-model.trim="keyword" type="search" placeholder="搜索过敏源" />
         </label>
         <button class="create-button" type="button" @click="openEditor()">
           <el-icon><Plus /></el-icon>
-          新增
+          录入
         </button>
       </section>
     </div>
 
-    <main class="warehouse-view">
-      <section v-if="filteredItems.length" class="waterfall-list" aria-label="库房物品列表">
-        <article
-          v-for="(item, index) in filteredItems"
-          :key="item.id"
-          class="warehouse-card"
-          :class="`tone-${index % 5}`"
-          @click="openEditor(item)"
-        >
-          <button class="delete-btn" type="button" aria-label="移入回收站" @click.stop="removeItem(item.id)">×</button>
-          <h2>{{ item.name }}</h2>
-          <p class="quantity-line">{{ formatQuantity(item.quantity) }}{{ item.unit }}</p>
-        </article>
+    <section v-if="suspectedSummary.length" class="suspected-summary" aria-label="疑似过敏分析">
+      <div class="summary-heading"><strong>疑似过敏源</strong></div>
+      <div class="summary-list">
+        <div v-for="entry in suspectedSummary" :key="entry.name" class="summary-item">
+          <span>{{ entry.name }}</span><b>{{ entry.count }} 次</b>
+        </div>
+      </div>
+    </section>
+
+    <main class="allergen-view">
+      <section v-if="filteredItems.length" class="waterfall-list" aria-label="按日期分类的录入列表">
+        <div v-for="group in groupedItems" :key="group.date" class="timeline-group">
+          <div class="timeline-date"><span></span><time :datetime="group.date">{{ group.date }}</time></div>
+          <div class="timeline-grid">
+            <article
+              v-for="(item, index) in group.items"
+              :key="item.id"
+              class="allergen-card"
+              :class="`tone-${index % 5}`"
+              @click="openEditor(item)"
+            >
+              <button class="delete-btn" type="button" aria-label="移入回收站" @click.stop="removeItem(item.id)">×</button>
+              <div class="card-title-row">
+                <h2>{{ item.name }}</h2>
+                <span v-if="item.suspected" class="suspected-badge">疑似</span>
+              </div>
+            </article>
+          </div>
+        </div>
       </section>
 
       <div v-else class="empty-state">
         <strong>{{ keyword ? "没有匹配物品" : "还没有物品" }}</strong>
-        <span>{{ keyword ? "换个关键词试试。" : "点击新增创建第一个库房物品。" }}</span>
+        <span>{{ keyword ? "换个关键词试试。" : "点击录入创建第一个记录。" }}</span>
       </div>
     </main>
 
     <van-popup v-model:show="editorPopup" class="edit-popup" round destroy-on-close>
       <form class="simple-editor" @submit.prevent="saveItem">
         <div class="editor-title">
-          <strong>{{ editingItemId ? "编辑物品" : "新增物品" }}</strong>
-          <span>填写名称、数量和单位</span>
+          <strong>{{ editingItemId ? "编辑" : "录入" }}</strong>
+          <span>填写食物或佐料名称</span>
+          <label class="suspected-toggle editor-toggle" :class="{ active: itemForm.suspected }">
+            <input v-model="itemForm.suspected" type="checkbox" role="switch" />
+            <span class="toggle-mark">{{ itemForm.suspected ? "✓" : "" }}</span>
+            <span class="toggle-text">疑似过敏</span>
+          </label>
         </div>
 
         <label class="field-row">
           <span>名称</span>
-          <input v-model.trim="itemForm.name" class="simple-input" placeholder="例如：矿泉水" />
+          <input v-model.trim="itemForm.name" class="simple-input" placeholder="例如：花生、酱油" />
         </label>
 
         <label class="field-row">
-          <span>数量</span>
+          <span>日期</span>
           <input
-            v-model.number="itemForm.quantity"
-            class="simple-input"
-            inputmode="decimal"
-            type="number"
-            min="0"
-            step="0.01"
-            placeholder="例如：12"
+            v-model="itemForm.recordedAt"
+            class="simple-input date-input"
+            type="date"
+            aria-label="选择录入日期"
           />
         </label>
-
-        <div class="field-row">
-          <span>单位</span>
-          <div class="unit-grid" role="radiogroup" aria-label="单位">
-            <button
-              v-for="unit in units"
-              :key="unit"
-              class="unit-option"
-              :class="{ active: itemForm.unit === unit }"
-              type="button"
-              role="radio"
-              :aria-checked="itemForm.unit === unit"
-              @click="itemForm.unit = unit"
-            >
-              {{ unit }}
-            </button>
-          </div>
-        </div>
 
         <div class="simple-actions">
           <button class="cancel-btn" type="button" @click="editorPopup = false">取消</button>
@@ -125,7 +125,7 @@
           <div v-for="item in deletedItems" :key="item.id" class="recycle-item">
             <div>
               <strong>{{ item.name }}</strong>
-              <span>{{ formatQuantity(item.quantity) }}{{ item.unit }} · {{ getRecycleDaysLeft(item) }} 天后清除</span>
+              <span>录入于 {{ item.recordedAt }} · {{ getRecycleDaysLeft(item) }} 天后清除</span>
             </div>
             <div class="recycle-actions">
               <button type="button" @click="restoreDeletedItem(item.id)">恢复</button>
@@ -164,7 +164,7 @@ import SettingsPopup from "@/components/SettingsPopup.vue";
 import { DEFAULT_THEME, isThemeKey, themeOptions } from "@/config/themes";
 import { LStorage } from "@/utils/localStorage.ts";
 import type { ThemeKey } from "@/config/themes";
-import type { DeletedWarehouseItem, WarehouseBackupData, WarehouseItem } from "@/types/tool";
+import type { DeletedAllergenItem, AllergenBackupData, AllergenItem } from "@/types/tool";
 
 const SCROLL_TOP_THRESHOLD = 240;
 const DATE_FORMAT = "YYYY-MM-DD";
@@ -175,20 +175,20 @@ type Unit = typeof units[number];
 
 const showScrollTop = ref(false);
 const currentTheme = ref<ThemeKey>(DEFAULT_THEME);
-const items = ref<WarehouseItem[]>([]);
-const deletedItems = ref<DeletedWarehouseItem[]>([]);
+const items = ref<AllergenItem[]>([]);
+const deletedItems = ref<DeletedAllergenItem[]>([]);
 const keyword = ref("");
 const settingsPopup = ref(false);
 const recyclePopup = ref(false);
 const editorPopup = ref(false);
 const editingItemId = ref("");
-const itemForm = reactive({ name: "", quantity: 1, unit: "个" as Unit });
+const itemForm = reactive({ name: "", recordedAt: formatDate(new Date()), suspected: false });
 const importExportInfo = ref({ show: false });
 const importInfo = ref({ dataStr: "", fileName: "" });
 
-const itemStorage = LStorage.new("warehouseItems");
-const recycleStorage = LStorage.new("warehouseRecycleBin");
-const themeStorage = LStorage.new("warehouseTheme");
+const itemStorage = LStorage.new("allergenItems");
+const recycleStorage = LStorage.new("allergenRecycleBin");
+const themeStorage = LStorage.new("allergenTheme");
 
 const currentThemeOption = computed(() => {
   return themeOptions.find((theme) => theme.key === currentTheme.value) || themeOptions[0];
@@ -198,6 +198,21 @@ const filteredItems = computed(() => {
   const query = keyword.value.trim().toLowerCase();
   if (!query) return items.value;
   return items.value.filter((item) => item.name.toLowerCase().includes(query));
+});
+const groupedItems = computed(() => {
+  const groups = new Map<string, AllergenItem[]>();
+  filteredItems.value.forEach((item) => {
+    const date = item.recordedAt || formatDate(new Date());
+    groups.set(date, [...(groups.get(date) || []), item]);
+  });
+  return [...groups.entries()]
+    .sort(([dateA], [dateB]) => dateB.localeCompare(dateA))
+    .map(([date, groupItems]) => ({ date, items: groupItems }));
+});
+const suspectedSummary = computed(() => {
+  const counts = new Map<string, number>();
+  items.value.filter((item) => item.suspected).forEach((item) => counts.set(item.name, (counts.get(item.name) || 0) + 1));
+  return [...counts.entries()].sort(([, a], [, b]) => b - a).map(([name, count]) => ({ name, count }));
 });
 const importExportSummary = computed(() => `导入后将覆盖 ${items.value.length} 个物品`);
 const hasImportOverwriteData = computed(() => items.value.length > 0);
@@ -212,12 +227,16 @@ function init() {
   deletedItems.value = purgeExpiredDeletedItems(normalizeDeletedItems(recycleStorage.getter()));
 }
 
-function createItem(name: string, quantity: number, unit: string): WarehouseItem {
+function formatDate(date: Date) {
+  return dayjs(date).format("YYYY-MM-DD");
+}
+
+function createItem(name: string, recordedAt: string, suspected: boolean): AllergenItem {
   return {
     id: createId("item"),
     name,
-    quantity,
-    unit,
+    recordedAt,
+    suspected,
     updatedAt: new Date().toISOString(),
   };
 }
@@ -227,23 +246,23 @@ function createId(prefix = "id") {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function normalizeItems(value: unknown): WarehouseItem[] {
+function normalizeItems(value: unknown): AllergenItem[] {
   if (!Array.isArray(value)) return [];
   return value
-    .filter((item): item is Partial<WarehouseItem> => Boolean(item && typeof item === "object"))
+    .filter((item): item is Partial<AllergenItem> => Boolean(item && typeof item === "object"))
     .map((item) => ({
       id: typeof item.id === "string" && item.id ? item.id : createId("item"),
       name: typeof item.name === "string" && item.name.trim() ? item.name.trim() : "未命名物品",
-      quantity: normalizeQuantity(item.quantity),
-      unit: isUnit(item.unit) ? item.unit : "个",
+      recordedAt: typeof item.recordedAt === "string" && item.recordedAt ? item.recordedAt : formatDate(new Date()),
+      suspected: item.suspected === true,
       updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : new Date().toISOString(),
     }));
 }
 
-function normalizeDeletedItems(value: unknown): DeletedWarehouseItem[] {
+function normalizeDeletedItems(value: unknown): DeletedAllergenItem[] {
   if (!Array.isArray(value)) return [];
   return normalizeItems(value).map((item, index) => {
-    const raw = value[index] as Partial<DeletedWarehouseItem>;
+    const raw = value[index] as Partial<DeletedAllergenItem>;
     return {
       ...item,
       deletedAt: typeof raw.deletedAt === "string" ? raw.deletedAt : new Date().toISOString(),
@@ -281,17 +300,16 @@ function setTheme(theme: ThemeKey) {
   themeStorage.setter(theme);
 }
 
-function openEditor(item?: WarehouseItem) {
+function openEditor(item?: AllergenItem) {
   editingItemId.value = item?.id || "";
   itemForm.name = item?.name || "";
-  itemForm.quantity = item?.quantity ?? 1;
-  itemForm.unit = isUnit(item?.unit) ? item.unit : "个";
+  itemForm.recordedAt = item?.recordedAt || formatDate(new Date());
+  itemForm.suspected = item?.suspected === true;
   editorPopup.value = true;
 }
 
 function saveItem() {
   const name = itemForm.name.trim();
-  const quantity = normalizeQuantity(itemForm.quantity);
   if (!name) {
     showToast("请填写名称");
     return;
@@ -301,12 +319,12 @@ function saveItem() {
     items.value = items.value.map((item) => item.id === editingItemId.value ? {
       ...item,
       name,
-      quantity,
-      unit: itemForm.unit,
+      recordedAt: itemForm.recordedAt || formatDate(new Date()),
+      suspected: itemForm.suspected,
       updatedAt: new Date().toISOString(),
     } : item);
   } else {
-    items.value = [createItem(name, quantity, itemForm.unit), ...items.value];
+    items.value = [createItem(name, itemForm.recordedAt || formatDate(new Date()), itemForm.suspected), ...items.value];
   }
 
   editorPopup.value = false;
@@ -337,12 +355,12 @@ function openRecycleBin() {
   recyclePopup.value = true;
 }
 
-function purgeExpiredDeletedItems(list: DeletedWarehouseItem[]) {
+function purgeExpiredDeletedItems(list: DeletedAllergenItem[]) {
   const now = Date.now();
   return list.filter((item) => now - new Date(item.deletedAt).getTime() < RECYCLE_KEEP_MS);
 }
 
-function getRecycleDaysLeft(item: DeletedWarehouseItem) {
+function getRecycleDaysLeft(item: DeletedAllergenItem) {
   const deletedTime = new Date(item.deletedAt).getTime();
   const leftMs = Math.max(0, RECYCLE_KEEP_MS - (Date.now() - deletedTime));
   return Math.max(1, Math.ceil(leftMs / (24 * 60 * 60 * 1000)));
@@ -380,7 +398,7 @@ function exportAllData() {
   const url = URL.createObjectURL(blob);
   const downloadLink = document.createElement("a");
   downloadLink.href = url;
-  downloadLink.download = `warehouse-backup-${dayjs(new Date()).format(DATE_FORMAT)}.json`;
+  downloadLink.download = `allergen-backup-${dayjs(new Date()).format(DATE_FORMAT)}.json`;
   document.body.appendChild(downloadLink);
   downloadLink.click();
   document.body.removeChild(downloadLink);
@@ -397,7 +415,7 @@ function onImportFileLoaded(payload: { dataStr: string; fileName: string }) {
 
 function importData() {
   try {
-    const parsedData = JSON.parse(importInfo.value.dataStr) as WarehouseBackupData;
+    const parsedData = JSON.parse(importInfo.value.dataStr) as AllergenBackupData;
     if (!parsedData || typeof parsedData !== "object" || Array.isArray(parsedData)) {
       throw new Error("Invalid backup data");
     }
@@ -420,7 +438,7 @@ function importData() {
 function resetAllData() {
   showConfirmDialog({
     title: "提示",
-    message: "确认清除所有库房数据吗？",
+    message: "确认清除所有过敏源数据吗？",
     width: "250px",
   }).then(() => {
     items.value = [];
@@ -476,7 +494,7 @@ onUnmounted(() => {
   box-sizing: border-box;
 }
 
-.warehouse-view {
+.allergen-view {
   width: min(100%, 780px);
   margin: 0 auto;
 }
@@ -604,12 +622,64 @@ onUnmounted(() => {
 
 .waterfall-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 10px;
+  gap: 18px;
   padding: 4px 4px 120px;
 }
 
-.warehouse-card {
+.timeline-group {
+  display: grid;
+  gap: 10px;
+}
+
+.suspected-summary {
+  width: min(100%, 780px);
+  display: grid;
+  gap: 9px;
+  margin: 14px auto 20px;
+  padding: 13px 18px;
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+}
+
+.summary-heading { display: flex; align-items: baseline; }
+.summary-heading strong { color: var(--text-strong); font-size: 15px; }
+.summary-list { display: flex; flex-wrap: wrap; gap: 7px; }
+.summary-item { display: inline-flex; align-items: center; gap: 7px; padding: 6px 9px; border-radius: 10px; color: var(--text-main); background: var(--surface); font-size: 13px; }
+.summary-item b { color: var(--accent-strong); font-size: 12px; }
+
+.timeline-date {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--text-strong);
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.timeline-date span {
+  width: 10px;
+  height: 10px;
+  border: 3px solid var(--accent);
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.timeline-date::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: color-mix(in srgb, var(--text-muted) 20%, transparent);
+}
+
+.timeline-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.allergen-card {
   position: relative;
   display: grid;
   gap: 8px;
@@ -623,11 +693,11 @@ onUnmounted(() => {
   transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
 
-.warehouse-card:active {
+.allergen-card:active {
   transform: scale(0.98);
 }
 
-.warehouse-card:hover {
+.allergen-card:hover {
   transform: translateY(-1px);
   box-shadow: 0 16px 28px rgba(38, 56, 88, 0.11);
 }
@@ -662,7 +732,9 @@ onUnmounted(() => {
   line-height: 1;
 }
 
-.warehouse-card h2 {
+.allergen-card h2 {
+  min-width: 0;
+  flex: 1;
   margin: 0;
   color: var(--text-strong);
   font-size: 17px;
@@ -678,6 +750,24 @@ onUnmounted(() => {
   color: var(--text-muted);
   font-size: 15px;
   font-weight: 900;
+}
+
+.suspected-badge {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border-radius: 999px;
+  color: #a44732;
+  background: #fff0e9;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding-right: 2px;
 }
 
 .empty-state {
@@ -722,9 +812,16 @@ onUnmounted(() => {
 }
 
 .editor-title {
+  position: relative;
   display: grid;
   gap: 4px;
   margin-bottom: 12px;
+}
+
+.editor-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
 }
 
 .editor-title strong {
@@ -742,7 +839,75 @@ onUnmounted(() => {
 .field-row {
   display: grid;
   gap: 6px;
+  margin-top: 14px;
+}
+
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-top: 10px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.switch-label {
+  color: var(--text-muted);
+}
+
+.suspected-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 4px 10px 4px 5px;
+  border: 1px solid var(--divider);
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: var(--surface-soft);
+  font-size: 12px;
+  font-weight: 900;
+  transition: 0.18s ease;
+}
+
+.suspected-toggle.active {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  background: color-mix(in srgb, var(--accent) 12%, #ffffff);
+}
+
+.suspected-toggle input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.toggle-mark {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: #ffffff;
+  background: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.suspected-toggle.active .toggle-mark {
+  background: var(--accent);
+}
+
+.editor-title .editor-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
 }
 
 .simple-input {
@@ -912,17 +1077,20 @@ onUnmounted(() => {
   }
 
   .waterfall-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
     padding-inline: 0;
   }
 
-  .warehouse-card {
+  .timeline-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .allergen-card {
     padding: 12px 32px 12px 12px;
     border-radius: 16px;
   }
 
-  .warehouse-card h2 {
+  .allergen-card h2 {
     font-size: 16px;
   }
 

@@ -1,16 +1,16 @@
-export interface WarehouseItem {
+export interface AllergenItem {
   id: string;
   name: string;
-  quantity: number;
-  unit: string;
+  recordedAt: string;
+  suspected: boolean;
   updatedAt: string;
 }
 
-export interface DeletedWarehouseItem extends WarehouseItem {
+export interface DeletedAllergenItem extends AllergenItem {
   deletedAt: string;
 }
 
-export interface WarehouseBackupData {
+export interface AllergenBackupData {
   items?: unknown;
   deletedItems?: unknown;
 }

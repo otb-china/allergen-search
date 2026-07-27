@@ -37,7 +37,7 @@
           </span>
           <span>
             <strong>导出总数据</strong>
-            <em>下载库房备份文件</em>
+            <em>下载过敏源备份文件</em>
           </span>
         </button>
 
@@ -47,7 +47,7 @@
           </span>
           <span>
             <strong>导入总数据</strong>
-            <em>上传备份文件后恢复库房</em>
+            <em>上传备份文件后恢复过敏源</em>
           </span>
         </button>
 
@@ -67,7 +67,7 @@
           </span>
           <span>
             <strong>重置数据</strong>
-            <em>清除全部库房数据</em>
+            <em>清除全部过敏源数据</em>
           </span>
         </button>
       </div>

@@ -622,7 +622,7 @@ onUnmounted(() => {
 
 .waterfall-list {
   display: grid;
-  gap: 18px;
+  gap: 28px;
   padding: 4px 4px 120px;
 }
 

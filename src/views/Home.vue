@@ -19,7 +19,7 @@
       <section class="search-section" aria-label="搜索和录入">
         <label class="search-box">
           <el-icon><Search /></el-icon>
-          <input v-model.trim="keyword" type="search" placeholder="搜索过敏源" />
+          <input v-model.trim="keyword" type="search" placeholder="搜索" />
         </label>
         <button class="create-button" type="button" @click="openEditor()">
           <el-icon><Plus /></el-icon>
@@ -60,9 +60,9 @@
       </section>
 
       <div v-else class="empty-state">
-        <strong>{{ keyword ? "没有匹配物品" : "还没有物品" }}</strong>
         <span>{{ keyword ? "换个关键词试试。" : "点击录入创建第一个记录。" }}</span>
       </div>
+
     </main>
 
     <van-popup v-model:show="editorPopup" class="edit-popup" round destroy-on-close>

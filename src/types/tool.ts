@@ -3,6 +3,8 @@ export interface AllergenItem {
   name: string;
   recordedAt: string;
   suspected: boolean;
+  note: string;
+  rating: number;
   updatedAt: string;
 }
 

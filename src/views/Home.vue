@@ -3,8 +3,8 @@
     <div class="sticky-panel">
       <header class="page-header">
         <div>
-          <p class="hero-tag">ALLERGEN SEARCH</p>
-          <h1>寻找过敏源</h1>
+          <p class="hero-tag">FOOD REACTION LOG</p>
+          <h1>饮食反应记录</h1>
         </div>
         <div class="header-actions">
           <button v-if="showScrollTop" class="header-icon" type="button" @click="scrollToTop">
@@ -19,7 +19,7 @@
       <section class="search-section" aria-label="搜索和录入">
         <label class="search-box">
           <el-icon><Search /></el-icon>
-          <input v-model.trim="keyword" type="search" placeholder="搜索" />
+          <input v-model.trim="keyword" type="search" placeholder="搜索名称或备注" aria-label="搜索名称或备注" />
         </label>
         <button class="create-button" type="button" @click="openEditor()">
           <el-icon><Plus /></el-icon>
@@ -28,35 +28,23 @@
       </section>
     </div>
 
-    <section v-if="suspectedSummary.length" class="suspected-summary" aria-label="疑似过敏分析">
-      <div class="summary-heading"><strong>疑似过敏源</strong></div>
-      <div class="summary-list">
-        <div v-for="entry in suspectedSummary" :key="entry.name" class="summary-item">
-          <span>{{ entry.name }}</span><b>{{ entry.count }} 次</b>
-        </div>
-      </div>
-    </section>
-
     <main class="allergen-view">
-      <section v-if="filteredItems.length" class="waterfall-list" aria-label="按日期分类的录入列表">
-        <div v-for="group in groupedItems" :key="group.date" class="timeline-group">
-          <div class="timeline-date"><span></span><time :datetime="group.date">{{ group.date }}</time></div>
-          <div class="timeline-grid">
-            <article
-              v-for="(item, index) in group.items"
-              :key="item.id"
-              class="allergen-card"
-              :class="`tone-${index % 5}`"
-              @click="openEditor(item)"
-            >
-              <button class="delete-btn" type="button" aria-label="移入回收站" @click.stop="removeItem(item.id)">×</button>
-              <div class="card-title-row">
-                <h2>{{ item.name }}</h2>
-                <span v-if="item.suspected" class="suspected-badge">疑似</span>
-              </div>
-            </article>
+      <section v-if="sortedItems.length" class="record-list" aria-label="按星级排序的录入列表">
+        <article
+          v-for="(item, index) in sortedItems"
+          :key="item.id"
+          class="allergen-card"
+          :class="`tone-${index % 5}`"
+          @click="openEditor(item)"
+        >
+          <div class="card-title-row">
+            <h2>{{ item.name }}</h2>
+            <span v-if="item.rating" class="card-rating" role="img" :aria-label="`瘙痒程度：${item.rating} 星`">
+              {{ "★".repeat(item.rating) }}
+            </span>
           </div>
-        </div>
+          <p v-if="item.note" class="card-note">{{ item.note }}</p>
+        </article>
       </section>
 
       <div v-else class="empty-state">
@@ -69,12 +57,11 @@
       <form class="simple-editor" @submit.prevent="saveItem">
         <div class="editor-title">
           <strong>{{ editingItemId ? "编辑" : "录入" }}</strong>
-          <span>填写食物或佐料名称</span>
-          <label class="suspected-toggle editor-toggle" :class="{ active: itemForm.suspected }">
-            <input v-model="itemForm.suspected" type="checkbox" role="switch" />
-            <span class="toggle-mark">{{ itemForm.suspected ? "✓" : "" }}</span>
-            <span class="toggle-text">疑似过敏</span>
-          </label>
+          <div class="editor-rating">
+            <span>瘙痒程度（选填）</span>
+            <el-rate v-model="itemForm.rating" clearable aria-label="瘙痒程度（选填），星数越多表示越痒" />
+          </div>
+          <span class="editor-description">填写食物或佐料名称</span>
         </div>
 
         <label class="field-row">
@@ -92,8 +79,22 @@
           />
         </label>
 
-        <div class="simple-actions">
-          <button class="cancel-btn" type="button" @click="editorPopup = false">取消</button>
+        <label class="field-row">
+          <span>备注（选填）</span>
+          <textarea v-model.trim="itemForm.note" class="simple-input note-input" rows="2" />
+        </label>
+
+        <div class="simple-actions" :class="{ 'has-recycle': editingItemId }">
+          <button
+            v-if="editingItemId"
+            class="recycle-btn"
+            type="button"
+            aria-label="移入回收站"
+            title="移入回收站"
+            @click="removeItem(editingItemId)"
+          >
+            <el-icon aria-hidden="true"><Delete /></el-icon>
+          </button>
           <button class="confirm-btn" type="submit">保存</button>
         </div>
       </form>
@@ -158,7 +159,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import dayjs from "dayjs";
 import { showConfirmDialog, showToast } from "vant";
-import { Plus, Search, Setting, Top } from "@element-plus/icons-vue";
+import { Delete, Plus, Search, Setting, Top } from "@element-plus/icons-vue";
 import ImportDataPopup from "@/components/ImportDataPopup.vue";
 import SettingsPopup from "@/components/SettingsPopup.vue";
 import { DEFAULT_THEME, isThemeKey, themeOptions } from "@/config/themes";
@@ -182,7 +183,7 @@ const settingsPopup = ref(false);
 const recyclePopup = ref(false);
 const editorPopup = ref(false);
 const editingItemId = ref("");
-const itemForm = reactive({ name: "", recordedAt: formatDate(new Date()), suspected: false });
+const itemForm = reactive({ name: "", recordedAt: formatDate(new Date()), note: "", rating: 0 });
 const importExportInfo = ref({ show: false });
 const importInfo = ref({ dataStr: "", fileName: "" });
 
@@ -194,25 +195,14 @@ const currentThemeOption = computed(() => {
   return themeOptions.find((theme) => theme.key === currentTheme.value) || themeOptions[0];
 });
 const themeStyle = computed(() => currentThemeOption.value.variables);
-const filteredItems = computed(() => {
+const sortedItems = computed(() => {
   const query = keyword.value.trim().toLowerCase();
-  if (!query) return items.value;
-  return items.value.filter((item) => item.name.toLowerCase().includes(query));
-});
-const groupedItems = computed(() => {
-  const groups = new Map<string, AllergenItem[]>();
-  filteredItems.value.forEach((item) => {
-    const date = item.recordedAt || formatDate(new Date());
-    groups.set(date, [...(groups.get(date) || []), item]);
-  });
-  return [...groups.entries()]
-    .sort(([dateA], [dateB]) => dateB.localeCompare(dateA))
-    .map(([date, groupItems]) => ({ date, items: groupItems }));
-});
-const suspectedSummary = computed(() => {
-  const counts = new Map<string, number>();
-  items.value.filter((item) => item.suspected).forEach((item) => counts.set(item.name, (counts.get(item.name) || 0) + 1));
-  return [...counts.entries()].sort(([, a], [, b]) => b - a).map(([name, count]) => ({ name, count }));
+  const matches = query
+    ? items.value.filter((item) =>
+      item.name.toLowerCase().includes(query) || item.note.toLowerCase().includes(query),
+    )
+    : [...items.value];
+  return matches.sort((a, b) => b.rating - a.rating);
 });
 const importExportSummary = computed(() => `导入后将覆盖 ${items.value.length} 个物品`);
 const hasImportOverwriteData = computed(() => items.value.length > 0);
@@ -231,12 +221,11 @@ function formatDate(date: Date) {
   return dayjs(date).format("YYYY-MM-DD");
 }
 
-function createItem(name: string, recordedAt: string, suspected: boolean): AllergenItem {
+function createItem(fields: Pick<AllergenItem, "name" | "recordedAt" | "note" | "rating">): AllergenItem {
   return {
     id: createId("item"),
-    name,
-    recordedAt,
-    suspected,
+    ...fields,
+    suspected: true,
     updatedAt: new Date().toISOString(),
   };
 }
@@ -255,6 +244,10 @@ function normalizeItems(value: unknown): AllergenItem[] {
       name: typeof item.name === "string" && item.name.trim() ? item.name.trim() : "未命名物品",
       recordedAt: typeof item.recordedAt === "string" && item.recordedAt ? item.recordedAt : formatDate(new Date()),
       suspected: item.suspected === true,
+      note: typeof item.note === "string" ? item.note.trim() : "",
+      rating: typeof item.rating === "number" && Number.isInteger(item.rating) && item.rating >= 1 && item.rating <= 5
+        ? item.rating
+        : 0,
       updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : new Date().toISOString(),
     }));
 }
@@ -304,7 +297,8 @@ function openEditor(item?: AllergenItem) {
   editingItemId.value = item?.id || "";
   itemForm.name = item?.name || "";
   itemForm.recordedAt = item?.recordedAt || formatDate(new Date());
-  itemForm.suspected = item?.suspected === true;
+  itemForm.note = item?.note ?? "";
+  itemForm.rating = item?.rating ?? 0;
   editorPopup.value = true;
 }
 
@@ -315,16 +309,20 @@ function saveItem() {
     return;
   }
 
+  const fields = {
+    ...itemForm,
+    name,
+    recordedAt: itemForm.recordedAt || formatDate(new Date()),
+  };
+
   if (editingItemId.value) {
     items.value = items.value.map((item) => item.id === editingItemId.value ? {
       ...item,
-      name,
-      recordedAt: itemForm.recordedAt || formatDate(new Date()),
-      suspected: itemForm.suspected,
+      ...fields,
       updatedAt: new Date().toISOString(),
     } : item);
   } else {
-    items.value = [createItem(name, itemForm.recordedAt || formatDate(new Date()), itemForm.suspected), ...items.value];
+    items.value = [createItem(fields), ...items.value];
   }
 
   editorPopup.value = false;
@@ -345,6 +343,7 @@ function removeItem(id: string) {
     };
     items.value = items.value.filter((item) => item.id !== id);
     deletedItems.value = [deletedItem, ...deletedItems.value.filter((item) => item.id !== id)];
+    if (editingItemId.value === id) editorPopup.value = false;
     showToast("已移入回收站");
   }).catch(() => {});
 }
@@ -438,7 +437,7 @@ function importData() {
 function resetAllData() {
   showConfirmDialog({
     title: "提示",
-    message: "确认清除所有过敏源数据吗？",
+    message: "确认清除所有饮食反应记录吗？",
     width: "250px",
   }).then(() => {
     items.value = [];
@@ -620,71 +619,18 @@ onUnmounted(() => {
   font-weight: 900;
 }
 
-.waterfall-list {
+.record-list {
   display: grid;
-  gap: 28px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
   padding: 4px 4px 120px;
 }
 
-.timeline-group {
-  display: grid;
-  gap: 10px;
-}
-
-.suspected-summary {
-  width: min(100%, 780px);
-  display: grid;
-  gap: 9px;
-  margin: 14px auto 20px;
-  padding: 13px 18px;
-  border: 1px solid color-mix(in srgb, var(--accent) 16%, transparent);
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
-}
-
-.summary-heading { display: flex; align-items: baseline; }
-.summary-heading strong { color: var(--text-strong); font-size: 15px; }
-.summary-list { display: flex; flex-wrap: wrap; gap: 7px; }
-.summary-item { display: inline-flex; align-items: center; gap: 7px; padding: 6px 9px; border-radius: 10px; color: var(--text-main); background: var(--surface); font-size: 13px; }
-.summary-item b { color: var(--accent-strong); font-size: 12px; }
-
-.timeline-date {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  color: var(--text-strong);
-  font-size: 15px;
-  font-weight: 900;
-}
-
-.timeline-date span {
-  width: 10px;
-  height: 10px;
-  border: 3px solid var(--accent);
-  border-radius: 50%;
-  background: var(--surface);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 12%, transparent);
-}
-
-.timeline-date::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: color-mix(in srgb, var(--text-muted) 20%, transparent);
-}
-
-.timeline-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 10px;
-}
-
 .allergen-card {
-  position: relative;
   display: grid;
   gap: 8px;
   min-width: 0;
-  padding: 14px 36px 14px 14px;
+  padding: 14px;
   border: 1px solid rgba(255, 255, 255, 0.78);
   border-radius: 18px;
   background: linear-gradient(145deg, #ffffff 0%, #eef8f6 100%);
@@ -718,20 +664,6 @@ onUnmounted(() => {
   background: linear-gradient(145deg, #ffffff 0%, #eef7e6 100%);
 }
 
-.delete-btn {
-  position: absolute;
-  top: 9px;
-  right: 9px;
-  width: 22px;
-  height: 22px;
-  border: 0;
-  border-radius: 999px;
-  color: var(--danger-text);
-  background: color-mix(in srgb, var(--danger-bg) 80%, #ffffff);
-  font-size: 18px;
-  line-height: 1;
-}
-
 .allergen-card h2 {
   min-width: 0;
   flex: 1;
@@ -740,9 +672,7 @@ onUnmounted(() => {
   font-size: 17px;
   line-height: 1.2;
   letter-spacing: -0.02em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .quantity-line {
@@ -752,14 +682,18 @@ onUnmounted(() => {
   font-weight: 900;
 }
 
-.suspected-badge {
+.card-rating {
   flex: 0 0 auto;
-  padding: 3px 7px;
-  border-radius: 999px;
-  color: #a44732;
-  background: #fff0e9;
-  font-size: 10px;
-  font-weight: 900;
+  color: #9a5a00;
+  font-size: 14px;
+}
+
+.card-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .card-title-row {
@@ -804,7 +738,8 @@ onUnmounted(() => {
   border-radius: 18px;
   background: #ffffff;
   box-shadow: 0 18px 48px rgba(38, 56, 88, 0.16);
-  overflow: hidden;
+  max-height: 90vh;
+  overflow-y: auto;
 }
 
 .simple-editor {
@@ -812,16 +747,11 @@ onUnmounted(() => {
 }
 
 .editor-title {
-  position: relative;
   display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
   gap: 4px;
   margin-bottom: 12px;
-}
-
-.editor-toggle {
-  position: absolute;
-  top: 0;
-  right: 0;
 }
 
 .editor-title strong {
@@ -829,7 +759,17 @@ onUnmounted(() => {
   font-size: 20px;
 }
 
-.editor-title span,
+.editor-description {
+  grid-column: 1 / -1;
+}
+
+.editor-rating {
+  display: grid;
+  justify-items: end;
+}
+
+.editor-description,
+.editor-rating > span,
 .field-row span {
   color: var(--text-muted);
   font-size: 12px;
@@ -856,60 +796,6 @@ onUnmounted(() => {
   color: var(--text-muted);
 }
 
-.suspected-toggle {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 34px;
-  padding: 4px 10px 4px 5px;
-  border: 1px solid var(--divider);
-  border-radius: 999px;
-  color: var(--text-muted);
-  background: var(--surface-soft);
-  font-size: 12px;
-  font-weight: 900;
-  transition: 0.18s ease;
-}
-
-.suspected-toggle.active {
-  border-color: var(--accent);
-  color: var(--accent-strong);
-  background: color-mix(in srgb, var(--accent) 12%, #ffffff);
-}
-
-.suspected-toggle input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  opacity: 0;
-  cursor: pointer;
-}
-
-.toggle-mark {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  color: #ffffff;
-  background: var(--text-muted);
-  font-size: 16px;
-  line-height: 1;
-}
-
-.suspected-toggle.active .toggle-mark {
-  background: var(--accent);
-}
-
-.editor-title .editor-toggle {
-  position: absolute;
-  top: 0;
-  right: 0;
-}
-
 .simple-input {
   display: block;
   width: 100%;
@@ -922,6 +808,12 @@ onUnmounted(() => {
   padding: 0 2px;
   font-size: 15px;
   font-weight: 650;
+}
+
+.note-input {
+  height: auto;
+  padding: 6px 2px;
+  resize: vertical;
 }
 
 .simple-input::placeholder {
@@ -957,9 +849,13 @@ onUnmounted(() => {
 
 .simple-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 8px;
   margin-top: 16px;
+}
+
+.simple-actions.has-recycle {
+  grid-template-columns: 40px 1fr;
 }
 
 .simple-actions button {
@@ -970,15 +866,19 @@ onUnmounted(() => {
   font-weight: 800;
 }
 
-.cancel-btn {
-  color: var(--text-main);
-  background: var(--header-icon-bg);
-}
-
 .confirm-btn {
   color: #ffffff;
   background: var(--submit-btn-bg);
   box-shadow: none;
+}
+
+.simple-actions .recycle-btn {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--danger-text);
+  background: var(--danger-bg);
+  font-size: 17px;
 }
 
 .recycle-popup {
@@ -1076,17 +976,12 @@ onUnmounted(() => {
     font-size: 14px;
   }
 
-  .waterfall-list {
+  .record-list {
     padding-inline: 0;
   }
 
-  .timeline-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-  }
-
   .allergen-card {
-    padding: 12px 32px 12px 12px;
+    padding: 12px;
     border-radius: 16px;
   }
 

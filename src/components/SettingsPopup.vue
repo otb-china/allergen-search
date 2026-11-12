@@ -47,7 +47,7 @@
           </span>
           <span>
             <strong>导入总数据</strong>
-            <em>上传备份文件后恢复记录</em>
+            <em>将备份与本地记录合并</em>
           </span>
         </button>
 

@@ -141,8 +141,7 @@
 
     <ImportDataPopup
       v-model:show="importExportInfo.show"
-      :has-overwrite-data="hasImportOverwriteData"
-      :summary="importExportSummary"
+      :record-count="items.length"
       :file-name="importInfo.fileName"
       :has-file="Boolean(importInfo.dataStr)"
       @file-loaded="onImportFileLoaded"
@@ -201,8 +200,6 @@ const sortedItems = computed(() => {
     : [...items.value];
   return matches.sort((a, b) => b.rating - a.rating);
 });
-const importExportSummary = computed(() => `导入后将覆盖 ${items.value.length} 个物品`);
-const hasImportOverwriteData = computed(() => items.value.length > 0);
 
 watch(items, saveItems, { deep: true });
 watch(deletedItems, saveDeletedItems, { deep: true });
@@ -409,6 +406,37 @@ function onImportFileLoaded(payload: { dataStr: string; fileName: string }) {
   showToast("备份文件已读取");
 }
 
+function mergeImportedItems(importedItems: AllergenItem[]) {
+  const itemsByName = new Map<string, AllergenItem>();
+  for (const item of [...items.value, ...importedItems]) {
+    const previous = itemsByName.get(item.name);
+    const date = dayjs(item.recordedAt);
+    const previousDate = previous && dayjs(previous.recordedAt);
+    if (!previousDate || (date.isValid() && (!previousDate.isValid() || date.isAfter(previousDate, "day")))) {
+      itemsByName.set(item.name, item);
+    }
+  }
+
+  // Renaming a record can leave the same ID under different names in older backups.
+  const usedIds = new Set<string>();
+  return Array.from(itemsByName.values(), (item) => {
+    if (usedIds.has(item.id)) return { ...item, id: createId("item") };
+    usedIds.add(item.id);
+    return item;
+  });
+}
+
+function mergeImportedDeletedItems(importedItems: DeletedAllergenItem[]) {
+  const itemsById = new Map(deletedItems.value.map((item) => [item.id, item]));
+  for (const item of purgeExpiredDeletedItems(importedItems)) {
+    const previous = itemsById.get(item.id);
+    if (!previous || dayjs(item.deletedAt).isAfter(previous.deletedAt)) {
+      itemsById.set(item.id, item);
+    }
+  }
+  return [...itemsById.values()];
+}
+
 function importData() {
   try {
     const parsedData = JSON.parse(importInfo.value.dataStr) as AllergenBackupData;
@@ -416,16 +444,17 @@ function importData() {
       throw new Error("Invalid backup data");
     }
     const importedItems = normalizeItems(parsedData.items);
-    const importedDeletedItems = normalizeDeletedItems(parsedData.deletedItems);
     if (!Array.isArray(parsedData.items) || importedItems.length !== parsedData.items.length) {
       throw new Error("Invalid items");
     }
-    items.value = importedItems;
-    deletedItems.value = importedDeletedItems;
+    const mergedItems = mergeImportedItems(importedItems);
+    const mergedDeletedItems = mergeImportedDeletedItems(normalizeDeletedItems(parsedData.deletedItems));
+    items.value = mergedItems;
+    deletedItems.value = mergedDeletedItems;
     importExportInfo.value.show = false;
     importInfo.value.dataStr = "";
     importInfo.value.fileName = "";
-    showToast("总数据导入成功");
+    showToast("备份已合并");
   } catch {
     showToast("导入失败，请检查备份文件");
   }
@@ -478,10 +507,7 @@ onUnmounted(() => {
 .home-page {
   min-height: 100vh;
   padding: 12px;
-  background:
-    radial-gradient(circle at 12% 8%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 32%),
-    radial-gradient(circle at 92% 10%, rgba(255, 143, 61, 0.16), transparent 28%),
-    var(--page-bg);
+  background-color: var(--page-bg);
   color: var(--text-main);
 }
 

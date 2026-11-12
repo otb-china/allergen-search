@@ -5,14 +5,14 @@
         <div>
           <p class="section-tag">Data</p>
           <h3>导入总数据</h3>
-          <p>选择导出的备份文件，会覆盖当前全部饮食反应记录。</p>
+          <p>备份会与本地记录合并。同名时保留录入日期较新的一条，同一天优先保留本地记录。</p>
         </div>
       </div>
 
-      <div v-if="hasOverwriteData" class="import-export-card">
+      <div v-if="recordCount" class="import-export-card">
         <div>
           <strong>当前数据</strong>
-          <span>{{ summary }}</span>
+          <span>{{ recordCount }} 条本地记录</span>
         </div>
       </div>
 
@@ -41,7 +41,7 @@
         :disabled="!hasFile"
         @click="emit('import')"
       >
-        导入总数据
+        合并导入
       </el-button>
     </div>
   </van-popup>
@@ -53,8 +53,7 @@ import { Upload } from "@element-plus/icons-vue";
 
 const props = defineProps<{
   show: boolean;
-  hasOverwriteData: boolean;
-  summary: string;
+  recordCount: number;
   fileName: string;
   hasFile: boolean;
 }>();

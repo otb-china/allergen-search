@@ -3,7 +3,6 @@
     <div class="popup-body import-export-popup">
       <div class="popup-head">
         <div>
-          <p class="section-tag">Data</p>
           <h3>导入总数据</h3>
           <p>备份会与本地记录合并。同名时保留录入日期较新的一条，同一天优先保留本地记录。</p>
         </div>
@@ -100,14 +99,6 @@ const onFileChange = async (event: Event) => {
 </script>
 
 <style lang="scss" scoped>
-.section-tag {
-  margin: 0 0 4px;
-  color: var(--text-muted);
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
 .file-input {
   display: none;
 }
@@ -119,10 +110,11 @@ const onFileChange = async (event: Event) => {
   width: 100%;
   margin-top: 14px;
   padding: 14px;
-  border: 1px dashed var(--divider);
-  border-radius: 12px;
+  border: 1.5px dashed var(--accent-border);
+  border-radius: 14px;
   background: var(--surface-soft);
   text-align: left;
+  cursor: pointer;
 }
 
 .file-upload-card > span:last-child {
@@ -157,7 +149,7 @@ const onFileChange = async (event: Event) => {
   gap: 12px;
   margin: 14px 0 12px;
   padding: 14px;
-  border-radius: 10px;
+  border-radius: 14px;
   background: var(--stat-income-bg);
   color: #ffffff;
 }

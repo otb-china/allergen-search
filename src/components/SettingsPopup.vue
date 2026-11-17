@@ -107,7 +107,8 @@ const popupShow = computed({
 .theme-panel {
   margin-top: 16px;
   padding: 14px;
-  border-radius: 12px;
+  border: 1px solid var(--divider);
+  border-radius: 14px;
   background: var(--surface-soft);
 }
 
@@ -142,10 +143,17 @@ const popupShow = computed({
   gap: 8px;
   min-width: 0;
   padding: 10px;
-  border: 1px solid transparent;
-  border-radius: 10px;
+  border: 1px solid var(--divider);
+  border-radius: 12px;
   background: var(--surface);
   text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.theme-option:active,
+.settings-item:active {
+  transform: scale(0.98);
 }
 
 .theme-option.active {
@@ -192,8 +200,10 @@ const popupShow = computed({
 
 .settings-item {
   padding: 14px 16px;
-  border: 0;
-  border-radius: 10px;
+  border: 1px solid var(--divider);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: transform 0.15s ease;
   background: var(--surface-soft);
   text-align: left;
 }

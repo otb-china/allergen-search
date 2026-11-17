@@ -2,7 +2,13 @@
   <div class="home-page" :style="themeStyle">
     <div class="sticky-panel">
       <header class="page-header">
-        <h1>饮食反应记录</h1>
+        <div class="brand">
+          <img class="brand-logo" :src="logoUrl" alt="" aria-hidden="true" />
+          <div class="brand-text">
+            <h1>饮食反应记录</h1>
+            <span>共 {{ items.length }} 条记录<template v-if="severeTotal"> · {{ severeTotal }} 条反应明显</template></span>
+          </div>
+        </div>
         <div class="header-actions">
           <button v-if="showScrollTop" class="header-icon" type="button" aria-label="返回顶部" @click="scrollToTop">
             <el-icon><Top /></el-icon>
@@ -17,49 +23,84 @@
         <label class="search-box">
           <el-icon><Search /></el-icon>
           <input v-model.trim="keyword" type="search" placeholder="搜索名称或备注" aria-label="搜索名称或备注" />
+          <button v-if="keyword" class="search-clear" type="button" aria-label="清空搜索" @click="keyword = ''">
+            <el-icon><CircleCloseFilled /></el-icon>
+          </button>
         </label>
         <button class="create-button" type="button" @click="openEditor()">
           <el-icon><Plus /></el-icon>
           录入
         </button>
       </section>
+
+      <nav v-if="items.length" class="filter-bar" aria-label="按瘙痒程度筛选">
+        <button
+          v-for="filter in filterOptions"
+          :key="filter.key"
+          class="filter-chip"
+          :class="{ active: ratingFilter === filter.key }"
+          type="button"
+          :aria-pressed="ratingFilter === filter.key"
+          @click="ratingFilter = filter.key"
+        >
+          {{ filter.label }}
+          <span>{{ filterCounts[filter.key] }}</span>
+        </button>
+      </nav>
     </div>
 
     <main class="allergen-view">
       <section v-if="sortedItems.length" class="record-list" aria-label="按星级排序的录入列表">
         <article
-          v-for="(item, index) in sortedItems"
+          v-for="item in sortedItems"
           :key="item.id"
           class="allergen-card"
-          :class="`tone-${index % 5}`"
+          :class="`level-${getLevel(item.rating).key}`"
+          tabindex="0"
           @click="openEditor(item)"
+          @keydown.enter="openEditor(item)"
         >
           <div class="card-title-row">
             <h2>{{ item.name }}</h2>
-            <span v-if="item.rating" class="card-rating" role="img" :aria-label="`瘙痒程度：${item.rating} 星`">
-              {{ "★".repeat(item.rating) }}
+            <span
+              v-if="item.rating"
+              class="card-rating"
+              role="img"
+              :aria-label="`瘙痒程度：${item.rating} 星`"
+            >
+              <i v-for="star in 5" :key="star" :class="{ on: star <= item.rating }">★</i>
             </span>
+            <span v-else class="card-unrated">未评级</span>
           </div>
           <p v-if="item.note" class="card-note">{{ item.note }}</p>
         </article>
       </section>
 
       <div v-else class="empty-state">
-        <span>{{ keyword ? "换个关键词试试。" : "点击录入创建第一个记录。" }}</span>
+        <span class="empty-icon">
+          <el-icon><component :is="items.length ? Search : EditPen" /></el-icon>
+        </span>
+        <strong>{{ items.length ? "没有匹配的记录" : "还没有记录" }}</strong>
+        <span>{{ items.length ? "换个关键词或筛选条件试试。" : "吃了可疑的食物或佐料后，随手记一笔。" }}</span>
+        <button v-if="!items.length" class="create-button" type="button" @click="openEditor()">
+          <el-icon><Plus /></el-icon>
+          录入第一条
+        </button>
+        <button v-else class="ghost-button" type="button" @click="resetFilters">清除筛选</button>
       </div>
-
     </main>
 
     <van-popup v-model:show="editorPopup" class="edit-popup" round destroy-on-close>
       <form class="simple-editor" @submit.prevent="saveItem">
-        <div class="editor-title">
-          <strong>{{ editingItemId ? "编辑" : "录入" }}</strong>
-          <div class="editor-rating">
-            <span>瘙痒程度（选填）</span>
-            <el-rate v-model="itemForm.rating" clearable aria-label="瘙痒程度（选填），星数越多表示越痒" />
+        <header class="editor-head">
+          <div>
+            <strong>{{ editingItemId ? "编辑记录" : "新增记录" }}</strong>
+            <span>记录可能引起反应的食物或佐料</span>
           </div>
-          <span class="editor-description">填写食物或佐料名称</span>
-        </div>
+          <button class="editor-close" type="button" aria-label="关闭" @click="editorPopup = false">
+            <el-icon><Close /></el-icon>
+          </button>
+        </header>
 
         <label class="field-row">
           <span>名称</span>
@@ -76,9 +117,22 @@
           />
         </label>
 
+        <div class="field-row">
+          <span>瘙痒程度<em>选填</em></span>
+          <div class="rating-field" :class="`level-${getLevel(itemForm.rating).key}`">
+            <el-rate v-model="itemForm.rating" clearable aria-label="瘙痒程度（选填），星数越多表示越痒" />
+            <span class="level-badge">{{ getLevel(itemForm.rating).label }}</span>
+          </div>
+        </div>
+
         <label class="field-row">
-          <span>备注（选填）</span>
-          <textarea v-model.trim="itemForm.note" class="simple-input note-input" rows="2" />
+          <span>备注<em>选填</em></span>
+          <textarea
+            v-model.trim="itemForm.note"
+            class="simple-input note-input"
+            rows="3"
+            placeholder="例如：食用约 1 小时后手臂发痒"
+          />
         </label>
 
         <div class="simple-actions" :class="{ 'has-recycle': editingItemId }">
@@ -155,26 +209,36 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import dayjs from "dayjs";
 import { showConfirmDialog, showToast } from "vant";
-import { Delete, Plus, Search, Setting, Top } from "@element-plus/icons-vue";
+import { CircleCloseFilled, Close, Delete, EditPen, Plus, Search, Setting, Top } from "@element-plus/icons-vue";
 import ImportDataPopup from "@/components/ImportDataPopup.vue";
 import SettingsPopup from "@/components/SettingsPopup.vue";
 import { DEFAULT_THEME, isThemeKey, themeOptions } from "@/config/themes";
 import { LStorage } from "@/utils/localStorage.ts";
 import type { ThemeKey } from "@/config/themes";
 import type { DeletedAllergenItem, AllergenBackupData, AllergenItem } from "@/types/tool";
+import logoUrl from "@/assets/allergen-icon.svg";
 
 const SCROLL_TOP_THRESHOLD = 240;
 const DATE_FORMAT = "YYYY-MM-DD";
 const RECYCLE_KEEP_DAYS = 7;
 const RECYCLE_KEEP_MS = RECYCLE_KEEP_DAYS * 24 * 60 * 60 * 1000;
-const units = ["个", "只", "支", "根", "袋", "瓶", "条", "米", "张", "箱", "盒", "包", "件", "卷", "套", "片"] as const;
-type Unit = typeof units[number];
+
+type LevelKey = "none" | "mild" | "moderate" | "severe";
+type FilterKey = "all" | Exclude<LevelKey, "none">;
+
+const filterOptions: { key: FilterKey; label: string }[] = [
+  { key: "all", label: "全部" },
+  { key: "severe", label: "明显" },
+  { key: "moderate", label: "中等" },
+  { key: "mild", label: "轻微" },
+];
 
 const showScrollTop = ref(false);
 const currentTheme = ref<ThemeKey>(DEFAULT_THEME);
 const items = ref<AllergenItem[]>([]);
 const deletedItems = ref<DeletedAllergenItem[]>([]);
 const keyword = ref("");
+const ratingFilter = ref<FilterKey>("all");
 const settingsPopup = ref(false);
 const recyclePopup = ref(false);
 const editorPopup = ref(false);
@@ -191,14 +255,27 @@ const currentThemeOption = computed(() => {
   return themeOptions.find((theme) => theme.key === currentTheme.value) || themeOptions[0];
 });
 const themeStyle = computed(() => currentThemeOption.value.variables);
-const sortedItems = computed(() => {
+const keywordMatches = computed(() => {
   const query = keyword.value.trim().toLowerCase();
-  const matches = query
-    ? items.value.filter((item) =>
-      item.name.toLowerCase().includes(query) || item.note.toLowerCase().includes(query),
-    )
-    : [...items.value];
-  return matches.sort((a, b) => b.rating - a.rating);
+  if (!query) return items.value;
+  return items.value.filter((item) =>
+    item.name.toLowerCase().includes(query) || item.note.toLowerCase().includes(query),
+  );
+});
+const filterCounts = computed(() => {
+  const counts: Record<FilterKey, number> = { all: keywordMatches.value.length, severe: 0, moderate: 0, mild: 0 };
+  for (const item of keywordMatches.value) {
+    const level = getLevel(item.rating).key;
+    if (level !== "none") counts[level] += 1;
+  }
+  return counts;
+});
+const severeTotal = computed(() => items.value.filter((item) => getLevel(item.rating).key === "severe").length);
+const sortedItems = computed(() => {
+  const matches = ratingFilter.value === "all"
+    ? [...keywordMatches.value]
+    : keywordMatches.value.filter((item) => getLevel(item.rating).key === ratingFilter.value);
+  return matches.sort((a, b) => b.rating - a.rating || b.recordedAt.localeCompare(a.recordedAt));
 });
 
 watch(items, saveItems, { deep: true });
@@ -257,13 +334,16 @@ function normalizeDeletedItems(value: unknown): DeletedAllergenItem[] {
   });
 }
 
-function normalizeQuantity(value: unknown) {
-  const quantity = Number(value);
-  return Number.isFinite(quantity) && quantity >= 0 ? quantity : 0;
+function getLevel(rating: number): { key: LevelKey; label: string } {
+  if (rating >= 4) return { key: "severe", label: "明显" };
+  if (rating >= 2) return { key: "moderate", label: "中等" };
+  if (rating >= 1) return { key: "mild", label: "轻微" };
+  return { key: "none", label: "未评级" };
 }
 
-function isUnit(value: unknown): value is Unit {
-  return typeof value === "string" && (units as readonly string[]).includes(value);
+function resetFilters() {
+  keyword.value = "";
+  ratingFilter.value = "all";
 }
 
 function saveItems() {
@@ -475,14 +555,6 @@ function resetAllData() {
   }).catch(() => {});
 }
 
-function getItemInitial(name: string) {
-  return name.trim().slice(0, 1) || "库";
-}
-
-function formatQuantity(quantity: number) {
-  return Number.isInteger(quantity) ? String(quantity) : String(Number(quantity.toFixed(2)));
-}
-
 function scrollToTop() {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -505,15 +577,36 @@ onUnmounted(() => {
 
 <style lang="scss" scoped>
 .home-page {
+  --level-none: #8a96a3;
+  --level-none-bg: rgba(138, 150, 163, 0.12);
+  --level-mild: #b98a12;
+  --level-mild-bg: rgba(242, 184, 48, 0.16);
+  --level-moderate: #d06a1e;
+  --level-moderate-bg: rgba(240, 134, 54, 0.15);
+  --level-severe: #cc4b42;
+  --level-severe-bg: rgba(222, 86, 74, 0.13);
   min-height: 100vh;
-  padding: 12px;
+  min-height: 100dvh;
+  padding: 0 12px;
   background-color: var(--page-bg);
   color: var(--text-main);
+  -webkit-tap-highlight-color: transparent;
 }
 
 .home-page,
 .home-page * {
   box-sizing: border-box;
+}
+
+.home-page button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.home-page button:focus-visible,
+.allergen-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .allergen-view {
@@ -526,26 +619,58 @@ onUnmounted(() => {
   position: sticky;
   top: 0;
   z-index: 20;
-  margin: -12px -12px 0;
-  background-color: var(--surface);
+  margin: 0 -12px;
+  padding-top: env(safe-area-inset-top);
+  background-color: color-mix(in srgb, var(--surface) 88%, transparent);
   border-bottom: 1px solid var(--divider);
   box-shadow: var(--header-shadow);
+  backdrop-filter: saturate(1.6) blur(14px);
+  -webkit-backdrop-filter: saturate(1.6) blur(14px);
 }
 
 .page-header {
-  background-color: inherit;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 10px var(--toolbar-inset) 8px;
+  padding: 12px var(--toolbar-inset) 10px;
 }
 
-.page-header h1 {
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.brand-logo {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  box-shadow: 0 4px 12px rgba(38, 56, 88, 0.1);
+}
+
+.brand-text {
+  min-width: 0;
+}
+
+.brand-text h1 {
   margin: 0;
   color: var(--text-strong);
-  font-size: 27px;
+  font-size: 22px;
   line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+.brand-text span {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .header-actions {
@@ -558,20 +683,25 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
   border: 0;
   border-radius: 12px;
   background: var(--surface-muted);
   color: var(--accent);
   font-size: 18px;
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+
+.header-icon:active {
+  transform: scale(0.94);
 }
 
 .search-section {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
-  padding: 0 var(--toolbar-inset) 12px;
+  padding: 0 var(--toolbar-inset) 10px;
 }
 
 .search-box {
@@ -580,15 +710,19 @@ onUnmounted(() => {
   gap: 8px;
   min-width: 0;
   min-height: 44px;
-  padding: 0 12px;
+  padding: 0 6px 0 12px;
   border: 1px solid var(--divider);
   border-radius: 12px;
-  color: var(--accent);
-  background: var(--surface-soft);
+  color: var(--text-muted);
+  background: var(--field-bg);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
 }
 
 .search-box:focus-within {
   border-color: var(--accent);
+  color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px var(--accent-ring);
 }
 
 .search-box input {
@@ -600,10 +734,31 @@ onUnmounted(() => {
   background: transparent;
   font-size: 16px;
   font-weight: 500;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.search-box input::-webkit-search-cancel-button {
+  display: none;
 }
 
 .search-box input::placeholder {
   color: var(--text-muted);
+  opacity: 0.8;
+}
+
+.search-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 16px;
 }
 
 .create-button {
@@ -612,59 +767,123 @@ onUnmounted(() => {
   justify-content: center;
   gap: 5px;
   min-height: 44px;
-  padding: 0 14px;
+  padding: 0 16px;
   border: 0;
   border-radius: 12px;
   color: #ffffff;
-  background: var(--accent);
-  font-size: 14px;
+  background: var(--submit-btn-bg);
+  box-shadow: var(--submit-btn-shadow);
+  font-size: 15px;
   font-weight: 700;
   white-space: nowrap;
+  transition: transform 0.15s ease, filter 0.15s ease;
+}
+
+.create-button:active {
+  transform: scale(0.96);
+  filter: brightness(0.95);
+}
+
+.filter-bar {
+  display: flex;
+  gap: 8px;
+  padding: 0 var(--toolbar-inset) 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.filter-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--divider);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.15s ease;
+}
+
+.filter-chip span {
+  min-width: 18px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  font-size: 11px;
+  text-align: center;
+}
+
+.filter-chip.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.filter-chip.active span {
+  background: rgba(255, 255, 255, 0.22);
 }
 
 .record-list {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 10px;
-  padding: 14px 4px 120px;
+  padding: 14px 4px calc(40px + env(safe-area-inset-bottom));
 }
 
 .allergen-card {
+  --level-color: var(--level-none);
+  --level-bg: var(--level-none-bg);
   display: grid;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
-  padding: 14px;
-  border: 1px solid rgba(255, 255, 255, 0.78);
-  border-radius: 18px;
-  background: linear-gradient(145deg, #ffffff 0%, #eef8f6 100%);
-  box-shadow: 0 10px 22px rgba(38, 56, 88, 0.07);
+  padding: 14px 16px;
+  border: 1px solid var(--divider);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 4px 14px rgba(38, 56, 88, 0.05);
   cursor: pointer;
   transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
 
 .allergen-card:active {
-  transform: scale(0.98);
+  transform: scale(0.985);
 }
 
-.allergen-card:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 16px 28px rgba(38, 56, 88, 0.11);
+@media (hover: hover) {
+  .allergen-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 12px 24px rgba(38, 56, 88, 0.1);
+  }
 }
 
-.tone-1 {
-  background: linear-gradient(145deg, #ffffff 0%, #fff4df 100%);
+.level-mild {
+  --level-color: var(--level-mild);
+  --level-bg: var(--level-mild-bg);
 }
 
-.tone-2 {
-  background: linear-gradient(145deg, #ffffff 0%, #edf3ff 100%);
+.level-moderate {
+  --level-color: var(--level-moderate);
+  --level-bg: var(--level-moderate-bg);
 }
 
-.tone-3 {
-  background: linear-gradient(145deg, #ffffff 0%, #f7eee6 100%);
+.level-severe {
+  --level-color: var(--level-severe);
+  --level-bg: var(--level-severe-bg);
 }
 
-.tone-4 {
-  background: linear-gradient(145deg, #ffffff 0%, #eef7e6 100%);
+.card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
 }
 
 .allergen-card h2 {
@@ -673,45 +892,59 @@ onUnmounted(() => {
   margin: 0;
   color: var(--text-strong);
   font-size: 17px;
-  line-height: 1.2;
-  letter-spacing: -0.02em;
+  line-height: 1.3;
   overflow-wrap: anywhere;
 }
 
-.quantity-line {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 15px;
-  font-weight: 900;
+.level-badge {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--level-bg);
+  color: var(--level-color);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
 }
 
 .card-rating {
+  display: inline-flex;
   flex: 0 0 auto;
-  color: #9a5a00;
-  font-size: 14px;
+  gap: 2px;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.card-rating i {
+  font-style: normal;
+  color: var(--surface-muted);
+}
+
+.card-rating i.on {
+  color: var(--level-color);
+}
+
+.card-unrated {
+  flex: 0 0 auto;
+  color: var(--text-subtle);
+  font-size: 12px;
 }
 
 .card-note {
   margin: 0;
   color: var(--text-muted);
   font-size: 13px;
+  line-height: 1.5;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
-}
-
-.card-title-row {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-  padding-right: 2px;
 }
 
 .empty-state {
   display: grid;
   place-items: center;
+  align-content: center;
   gap: 8px;
-  min-height: 46vh;
+  min-height: 56vh;
   padding: 34px 12px;
   text-align: center;
 }
@@ -721,14 +954,46 @@ onUnmounted(() => {
   padding: 22px 12px;
 }
 
+.empty-icon {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 4px;
+  border-radius: 20px;
+  background: var(--header-icon-bg);
+  color: var(--accent);
+  font-size: 28px;
+}
+
 .empty-state strong {
   color: var(--text-strong);
-  font-size: 22px;
+  font-size: 18px;
+}
+
+.empty-state.compact strong {
+  font-size: 16px;
 }
 
 .empty-state span {
   color: var(--text-muted);
   font-size: 13px;
+}
+
+.empty-state .create-button,
+.ghost-button {
+  margin-top: 10px;
+}
+
+.ghost-button {
+  height: 38px;
+  padding: 0 16px;
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .home-page :deep(.van-popup) {
@@ -737,46 +1002,54 @@ onUnmounted(() => {
 }
 
 .home-page :deep(.edit-popup) {
-  width: min(86vw, 360px);
-  border-radius: 18px;
-  background: #ffffff;
-  box-shadow: 0 18px 48px rgba(38, 56, 88, 0.16);
+  width: min(90vw, 380px);
+  border-radius: 20px;
+  background: var(--surface);
+  box-shadow: 0 18px 48px rgba(38, 56, 88, 0.18);
   max-height: 90vh;
   overflow-y: auto;
 }
 
 .simple-editor {
-  padding: 18px 18px 14px;
+  padding: 18px 18px 16px;
 }
 
-.editor-title {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 4px;
-  margin-bottom: 12px;
+.editor-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
 }
 
-.editor-title strong {
+.editor-head strong,
+.editor-head span {
+  display: block;
+}
+
+.editor-head strong {
   color: var(--text-strong);
-  font-size: 20px;
+  font-size: 19px;
 }
 
-.editor-description {
-  grid-column: 1 / -1;
-}
-
-.editor-rating {
-  display: grid;
-  justify-items: end;
-}
-
-.editor-description,
-.editor-rating > span,
-.field-row span {
+.editor-head span {
+  margin-top: 3px;
   color: var(--text-muted);
   font-size: 12px;
-  font-weight: 800;
+}
+
+.editor-close {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  font-size: 15px;
 }
 
 .field-row {
@@ -785,94 +1058,108 @@ onUnmounted(() => {
   margin-top: 14px;
 }
 
-.switch-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 10px;
+.field-row > span {
   color: var(--text-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
-.switch-label {
-  color: var(--text-muted);
+.field-row > span em {
+  margin-left: 6px;
+  color: var(--text-subtle);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 500;
+  opacity: 0.8;
 }
 
 .simple-input {
   display: block;
   width: 100%;
-  height: 42px;
-  border: 0;
-  border-bottom: 1px solid var(--divider);
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--divider);
+  border-radius: 12px;
   outline: 0;
   color: var(--text-main);
-  background: transparent;
-  padding: 0 2px;
-  font-size: 15px;
-  font-weight: 650;
+  background: var(--field-bg);
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 500;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.date-input {
+  line-height: 42px;
 }
 
 .note-input {
   height: auto;
-  padding: 6px 2px;
+  min-height: 76px;
+  padding: 10px 12px;
+  line-height: 1.5;
   resize: vertical;
 }
 
 .simple-input::placeholder {
   color: var(--text-muted);
-  opacity: 0.7;
+  opacity: 0.65;
 }
 
 .simple-input:focus {
-  border-bottom-color: var(--accent);
-}
-
-.unit-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.unit-option {
-  height: 34px;
-  border: 1px solid var(--divider);
-  border-radius: 999px;
-  color: var(--text-main);
-  background: var(--surface-soft);
-  font-size: 14px;
-  font-weight: 800;
-}
-
-.unit-option.active {
   border-color: var(--accent);
-  color: #ffffff;
-  background: var(--submit-btn-bg);
+  background: var(--surface);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+.rating-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--divider);
+  border-radius: 12px;
+  background: var(--field-bg);
+}
+
+.rating-field {
+  --level-color: var(--level-none);
+  --level-bg: var(--level-none-bg);
+}
+
+.rating-field :deep(.el-rate) {
+  --el-rate-icon-size: 22px;
+  --el-rate-icon-margin: 4px;
+  height: 32px;
 }
 
 .simple-actions {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 8px;
-  margin-top: 16px;
+  gap: 10px;
+  margin-top: 20px;
 }
 
 .simple-actions.has-recycle {
-  grid-template-columns: 40px 1fr;
+  grid-template-columns: 44px 1fr;
 }
 
 .simple-actions button {
-  height: 36px;
+  height: 44px;
   border: 0;
-  border-radius: 999px;
-  font-size: 14px;
-  font-weight: 800;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 700;
 }
 
 .confirm-btn {
   color: #ffffff;
   background: var(--submit-btn-bg);
-  box-shadow: none;
+  box-shadow: var(--submit-btn-shadow);
 }
 
 .simple-actions .recycle-btn {
@@ -881,7 +1168,7 @@ onUnmounted(() => {
   padding: 0;
   color: var(--danger-text);
   background: var(--danger-bg);
-  font-size: 17px;
+  font-size: 18px;
 }
 
 .recycle-popup {
@@ -907,6 +1194,7 @@ onUnmounted(() => {
   gap: 12px;
   align-items: center;
   padding: 12px;
+  border: 1px solid var(--divider);
   border-radius: 12px;
   background: var(--surface-soft);
 }
@@ -936,12 +1224,12 @@ onUnmounted(() => {
 
 .recycle-actions button {
   height: 34px;
-  padding: 0 12px;
+  padding: 0 14px;
   border: 0;
   border-radius: 999px;
   background: var(--header-icon-bg);
   color: var(--accent);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -952,16 +1240,21 @@ onUnmounted(() => {
 
 @media (max-width: 520px) {
   .home-page {
-    padding: 10px;
+    padding: 0 10px;
   }
 
   .sticky-panel {
-    --toolbar-inset: 10px;
-    margin: -10px -10px 0;
+    --toolbar-inset: 12px;
+    margin: 0 -10px;
   }
 
-  .page-header h1 {
-    font-size: 24px;
+  .brand-logo {
+    width: 36px;
+    height: 36px;
+  }
+
+  .brand-text h1 {
+    font-size: 19px;
   }
 
   .record-list {
@@ -969,16 +1262,11 @@ onUnmounted(() => {
   }
 
   .allergen-card {
-    padding: 12px;
-    border-radius: 16px;
+    padding: 12px 14px;
   }
 
   .allergen-card h2 {
     font-size: 16px;
-  }
-
-  .quantity-line {
-    font-size: 14px;
   }
 
   .recycle-item {
@@ -987,6 +1275,12 @@ onUnmounted(() => {
 
   .recycle-actions {
     justify-content: flex-end;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-page * {
+    transition: none !important;
   }
 }
 </style>

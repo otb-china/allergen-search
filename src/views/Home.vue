@@ -621,11 +621,7 @@ onUnmounted(() => {
   z-index: 20;
   margin: 0 -12px;
   padding-top: env(safe-area-inset-top);
-  background-color: color-mix(in srgb, var(--surface) 88%, transparent);
-  border-bottom: 1px solid var(--divider);
-  box-shadow: var(--header-shadow);
-  backdrop-filter: saturate(1.6) blur(14px);
-  -webkit-backdrop-filter: saturate(1.6) blur(14px);
+  background-color: var(--page-bg);
 }
 
 .page-header {

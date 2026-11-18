@@ -683,7 +683,8 @@ onUnmounted(() => {
   height: 40px;
   border: 0;
   border-radius: 12px;
-  background: var(--surface-muted);
+  background: var(--surface);
+  box-shadow: 0 2px 10px rgba(20, 40, 62, 0.06);
   color: var(--accent);
   font-size: 18px;
   transition: background-color 0.15s ease, transform 0.15s ease;
@@ -707,10 +708,11 @@ onUnmounted(() => {
   min-width: 0;
   min-height: 44px;
   padding: 0 6px 0 12px;
-  border: 1px solid var(--divider);
+  border: 1px solid transparent;
   border-radius: 12px;
   color: var(--text-muted);
-  background: var(--field-bg);
+  background: var(--surface);
+  box-shadow: 0 2px 10px rgba(20, 40, 62, 0.06);
   transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
 }
 

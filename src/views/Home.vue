@@ -213,7 +213,8 @@ import { CircleCloseFilled, Close, Delete, EditPen, Plus, Search, Setting, Top }
 import ImportDataPopup from "@/components/ImportDataPopup.vue";
 import SettingsPopup from "@/components/SettingsPopup.vue";
 import { DEFAULT_THEME, isThemeKey, themeOptions } from "@/config/themes";
-import { LStorage } from "@/utils/localStorage.ts";
+import { storageKeys } from "@/utils/toolStorage";
+import { LStorage, reportSaveError } from "@/utils/localStorage.ts";
 import type { ThemeKey } from "@/config/themes";
 import type { DeletedAllergenItem, AllergenBackupData, AllergenItem } from "@/types/tool";
 import logoUrl from "@/assets/allergen-icon.svg";
@@ -247,9 +248,9 @@ const itemForm = reactive({ name: "", recordedAt: formatDate(new Date()), note: 
 const importExportInfo = ref({ show: false });
 const importInfo = ref({ dataStr: "", fileName: "" });
 
-const itemStorage = LStorage.new("allergenItems");
-const recycleStorage = LStorage.new("allergenRecycleBin");
-const themeStorage = LStorage.new("allergenTheme");
+const itemStorage = LStorage.new(storageKeys.items);
+const recycleStorage = LStorage.new(storageKeys.recycleBin);
+const themeStorage = LStorage.new(storageKeys.theme);
 
 const currentThemeOption = computed(() => {
   return themeOptions.find((theme) => theme.key === currentTheme.value) || themeOptions[0];
@@ -348,23 +349,23 @@ function resetFilters() {
 
 function saveItems() {
   if (items.value.length) {
-    itemStorage.setter(items.value);
+    void itemStorage.setter(items.value).catch(reportSaveError);
   } else {
-    itemStorage.remove();
+    void itemStorage.remove().catch(reportSaveError);
   }
 }
 
 function saveDeletedItems() {
   if (deletedItems.value.length) {
-    recycleStorage.setter(deletedItems.value);
+    void recycleStorage.setter(deletedItems.value).catch(reportSaveError);
   } else {
-    recycleStorage.remove();
+    void recycleStorage.remove().catch(reportSaveError);
   }
 }
 
 function setTheme(theme: ThemeKey) {
   currentTheme.value = theme;
-  themeStorage.setter(theme);
+  void themeStorage.setter(theme).catch(reportSaveError);
 }
 
 function openEditor(item?: AllergenItem) {
@@ -517,7 +518,7 @@ function mergeImportedDeletedItems(importedItems: DeletedAllergenItem[]) {
   return [...itemsById.values()];
 }
 
-function importData() {
+async function importData() {
   try {
     const parsedData = JSON.parse(importInfo.value.dataStr) as AllergenBackupData;
     if (!parsedData || typeof parsedData !== "object" || Array.isArray(parsedData)) {
@@ -529,6 +530,10 @@ function importData() {
     }
     const mergedItems = mergeImportedItems(importedItems);
     const mergedDeletedItems = mergeImportedDeletedItems(normalizeDeletedItems(parsedData.deletedItems));
+    await Promise.all([
+      itemStorage.setter(mergedItems),
+      recycleStorage.setter(mergedDeletedItems),
+    ]);
     items.value = mergedItems;
     deletedItems.value = mergedDeletedItems;
     importExportInfo.value.show = false;
@@ -545,11 +550,15 @@ function resetAllData() {
     title: "提示",
     message: "确认清除所有饮食反应记录吗？",
     width: "250px",
-  }).then(() => {
+  }).then(async () => {
+    try {
+      await Promise.all([itemStorage.remove(), recycleStorage.remove()]);
+    } catch (error) {
+      reportSaveError(error);
+      return;
+    }
     items.value = [];
     deletedItems.value = [];
-    itemStorage.remove();
-    recycleStorage.remove();
     settingsPopup.value = false;
     showToast("数据已重置");
   }).catch(() => {});

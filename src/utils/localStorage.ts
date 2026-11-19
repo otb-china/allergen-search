@@ -19,6 +19,10 @@ let lastReportedError: unknown;
 function reportSaveError(error: unknown) {
   if (lastReportedError === error) return;
   lastReportedError = error;
+  if (error instanceof DOMException && error.name === "QuotaExceededError") {
+    window.alert("站点存储空间不足，改动未保存。请先导出当前数据，再退出或刷新网页。");
+    return;
+  }
   window.alert(error instanceof StorageConflictError
     ? "此工具的数据已在另一页面更新。本页的改动未保存，请先导出当前数据，再刷新。"
     : "数据未保存，请先导出当前数据，再检查存储空间。");

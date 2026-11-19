@@ -540,8 +540,10 @@ async function importData() {
     importInfo.value.dataStr = "";
     importInfo.value.fileName = "";
     showToast("备份已合并");
-  } catch {
-    showToast("导入失败，请检查备份文件");
+  } catch (error) {
+    showToast(error instanceof DOMException && error.name === "QuotaExceededError"
+      ? "存储空间不足，导入的数据未保存，请保留备份文件"
+      : "导入失败，请检查备份文件");
   }
 }
 
